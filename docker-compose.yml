@@ -1,0 +1,79 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: contextly-db
+
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+
+    ports:
+      - "5433:5432"
+
+    volumes:
+      - contextly_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+
+    container_name: contextly-backend
+
+    env_file:
+      - ./backend/.env
+
+    environment:
+      # DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      FRONTEND_URL: http://localhost:3000
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./backend/storage/uploads:/app/storage/uploads
+      - ${USERPROFILE}/.aws:/root/.aws:ro
+
+    # depends_on:
+    #   db:
+    #     condition: service_healthy
+
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_API_URL: http://localhost:8000
+
+    container_name: contextly-frontend
+
+    environment:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      - backend
+
+    restart: unless-stopped
+
+volumes:
+  contextly_postgres_data:
+  contextly_uploads:

@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+:root {
+  background: #09090b;
+  color: #f4f4f5;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  background: #09090b;
+  color: #f4f4f5;
+  font-family: var(--font-geist), var(--font-display), sans-serif;
+
+}
+
+.font-serif {
+  font-family: var(--font-display), serif;
+}

@@ -1,0 +1,152 @@
+[
+  {
+    "question": "What technologies and frameworks are listed under Production AI / MLOps?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "What technologies were used to build and deploy the RAG pipeline at PhaseShift?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "By what percentage did the RAG pipeline reduce information retrieval time?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "How were the machine learning inference services deployed at PhaseShift?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "What accuracy was achieved by the ConvLSTM model for detecting process deviations?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "What techniques were used to achieve sub-50 ms inference latency?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "What AI and machine learning systems projects are highlighted in the resume?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "What technologies were used in the Production RAG Assistant project?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "What degrees does Osazee Ero hold and from which universities?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "What publications are listed in the resume?",
+    "expected_filename": "Osazee_Ero_AI_ML_Engineer_CV.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "What is the overall architecture of the AI Resume App?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 1
+  },
+  {
+    "question": "Why should the browser not directly query PostgreSQL?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 2
+  },
+  {
+    "question": "How is the FastAPI health endpoint implemented?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 3
+  },
+  {
+    "question": "Why is CORS configuration required between Next.js and FastAPI?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 4
+  },
+  {
+    "question": "Where is the backend API URL configured in the Next.js application?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 5
+  },
+  {
+    "question": "How is PostgreSQL configured in Docker Compose?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 7
+  },
+  {
+    "question": "What is the purpose of the postgres_data Docker volume?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 7
+  },
+  {
+    "question": "What Python packages are installed to connect FastAPI to PostgreSQL?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 8
+  },
+  {
+    "question": "Why does the database hostname change from localhost to db when FastAPI runs inside Docker Compose?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 8
+  },
+  {
+    "question": "What is the purpose of the SQLAlchemy Engine?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 9
+  },
+  {
+    "question": "How does the database health endpoint verify the PostgreSQL connection?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 9
+  },
+  {
+    "question": "What is the difference between the SQLAlchemy Engine, SessionLocal, and Session?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 12
+  },
+  {
+    "question": "What is the difference between a SQLAlchemy model and a Pydantic schema?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 13
+  },
+  {
+    "question": "What do db.add, db.commit, and db.refresh do when creating a resume?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 14
+  },
+  {
+    "question": "Why can GET /resumes and POST /resumes use the same API path?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 15
+  },
+  {
+    "question": "Why are Alembic migrations preferred over Base.metadata.create_all for production?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 16
+  },
+  {
+    "question": "How do you generate and apply the first Alembic migration?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 17
+  },
+  {
+    "question": "How does the API respond when a requested resume does not exist?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 19
+  },
+  {
+    "question": "What is the difference between PUT and PATCH according to the tutorial?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 21
+  },
+  {
+    "question": "What features are still missing before the AI Resume App is production ready?",
+    "expected_filename": "AI_Resume_App_Full_Stack_Tutorial_Lessons_1_to_5.pdf",
+    "expected_page": 30
+  }
+]
