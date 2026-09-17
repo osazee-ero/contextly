@@ -30,6 +30,9 @@ def validate_pdf(
             "Only PDF files are supported."
         )
 
+    if len(filename) > 255:
+        raise FileValidationError("The filename is too long. Rename the PDF to 255 characters or fewer.")
+
     # -------------------------
     # Validate content type
     # -------------------------
@@ -93,6 +96,8 @@ def validate_pdf(
         page_count = len(
             reader.pages
         )
+        if page_count == 0:
+            raise FileValidationError("The PDF contains no pages.")
 
     except FileValidationError:
         raise

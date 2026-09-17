@@ -1,77 +1,7 @@
-# import uuid
-# from dataclasses import dataclass
-
-# from sqlalchemy import select
-# from sqlalchemy.orm import Session
-
-# from app.models.document import Document
-# from app.models.document_chunk import DocumentChunk
-# from app.services.embeddings import embed_text
-
-
-# @dataclass
-# class RetrievalResult:
-#     chunk_id: uuid.UUID
-#     document_id: uuid.UUID
-#     filename: str
-#     page_number: int
-#     content: str
-#     distance: float
-
-
-# def retrieve_chunks(
-#     db: Session,
-#     user_id: uuid.UUID,
-#     query: str,
-#     limit: int = 5,
-# ) -> list[RetrievalResult]:
-#     query_embedding = embed_text(query)
-
-#     distance = (
-#         DocumentChunk.embedding.cosine_distance(
-#             query_embedding
-#         )
-#     )
-
-#     rows = db.execute(
-#         select(
-#             DocumentChunk,
-#             Document,
-#             distance.label("distance"),
-#         )
-#         .join(
-#             Document,
-#             Document.id
-#             == DocumentChunk.document_id,
-#         )
-#         .where(
-#             Document.user_id == user_id,
-#             Document.status == "ready",
-#             DocumentChunk.embedding.is_not(None),
-#         )
-#         .order_by(distance)
-#         .limit(limit)
-#     ).all()
-
-#     return [
-#         RetrievalResult(
-#             chunk_id=chunk.id,
-#             document_id=document.id,
-#             filename=document.filename,
-#             page_number=chunk.page_number,
-#             content=chunk.content,
-#             distance=float(chunk_distance),
-#         )
-#         for (
-#             chunk,
-#             document,
-#             chunk_distance,
-#         ) in rows
-#     ]
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.document import Document
@@ -95,6 +25,8 @@ def retrieve_chunks(
     query: str,
     limit: int = 5,
 ) -> list[RetrievalResult]:
+    if not db.scalar(select(Document.id).where(Document.user_id == user_id, Document.status == "ready").limit(1)):
+        return []
     query_embedding = embed_text(query)
 
     distance = (

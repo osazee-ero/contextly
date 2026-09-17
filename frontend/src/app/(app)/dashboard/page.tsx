@@ -36,6 +36,7 @@ import { useAuthenticatedFetch } from "@/hooks/use-authenticated-fetch";
 // const MAX_STORAGE_MB = 100;
 
 export default function DashboardPage() {
+  const [reloadCount, setReloadCount] = useState(0);
   const authenticatedFetch =
     useAuthenticatedFetch();
 
@@ -126,6 +127,7 @@ export default function DashboardPage() {
     authenticatedFetch,
     isLoaded,
     isSignedIn,
+    reloadCount,
   ]);
 
  const storageUsedMb =
@@ -222,8 +224,9 @@ export default function DashboardPage() {
 
         {/* Error */}
         {loadError && (
-          <div className="mt-6 rounded-lg border border-red-500/15 bg-red-500/[0.04] px-4 py-3 text-xs text-red-300">
-            {loadError}
+          <div role="alert" className="mt-6 rounded-lg border border-red-500/15 bg-red-500/[0.04] px-4 py-3 text-sm text-red-300">
+            <p>{loadError}</p>
+            <button type="button" disabled={isLoading} onClick={() => setReloadCount((count) => count + 1)} className="mt-2 min-h-11 underline disabled:opacity-50">Try again</button>
           </div>
         )}
 

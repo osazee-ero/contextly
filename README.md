@@ -313,7 +313,7 @@ The upload layer validates:
 
 Documents are stored using generated storage keys rather than trusting user-provided filenames.
 
-The frontend polls processing documents until they transition to `Ready` or `Failed`.
+The frontend polls processing documents until they transition to `Ready` or `Failed`. Failed documents show a safe, actionable reason and support retrying the saved PDF without consuming another upload slot. Embeddings are generated in bounded batches.
 
 ---
 
@@ -531,3 +531,7 @@ AI & Machine Learning Engineer
 ---
 
 Built as an end-to-end production AI engineering project.
+
+## Updating the deployed app
+
+See [the release guide](docs/UPDATE.md) for the ECR build, ECS database migration, service rollout, and Vercel update sequence. This release requires Alembic revision `a82e31c49f10` before deploying the new backend.

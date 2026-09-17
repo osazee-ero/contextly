@@ -906,7 +906,7 @@ async function handleDeleteConversation(
                 <p className="mt-1 text-[11px] leading-5 text-zinc-600">
                   You&apos;ve used all questions
                   available on the Free plan today.
-                  Your quota resets tomorrow.
+                  Your quota resets at midnight UTC.
                 </p>
               </div>
             </div>

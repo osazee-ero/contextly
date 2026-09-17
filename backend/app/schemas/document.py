@@ -24,6 +24,7 @@ class DocumentResponse(BaseModel):
     file_size_bytes: int
     page_count: int | None
     status: str
+    error_message: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(

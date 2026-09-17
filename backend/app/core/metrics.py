@@ -1,3 +1,4 @@
+from collections import deque
 from dataclasses import dataclass, field
 from threading import Lock
 
@@ -12,16 +13,16 @@ class MetricsStore:
     ingestion_completed: int = 0
     ingestion_failed: int = 0
 
-    request_durations_ms: list[float] = field(
-        default_factory=list
+    request_durations_ms: deque[float] = field(
+        default_factory=lambda: deque(maxlen=1000)
     )
 
-    rag_durations_ms: list[float] = field(
-        default_factory=list
+    rag_durations_ms: deque[float] = field(
+        default_factory=lambda: deque(maxlen=1000)
     )
 
-    ingestion_durations_ms: list[float] = field(
-        default_factory=list
+    ingestion_durations_ms: deque[float] = field(
+        default_factory=lambda: deque(maxlen=1000)
     )
 
     lock: Lock = field(
@@ -75,7 +76,7 @@ class MetricsStore:
 
     @staticmethod
     def average(
-        values: list[float],
+        values: list[float] | deque[float],
     ) -> float:
         if not values:
             return 0.0

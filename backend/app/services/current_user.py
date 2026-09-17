@@ -4,6 +4,7 @@ from fastapi import (
     status,
 )
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
 from clerk_backend_api import Clerk
@@ -89,23 +90,27 @@ def get_current_user(
     )
 
     if existing_email_user:
-        existing_email_user.clerk_user_id = (
-            authenticated_user.clerk_user_id
-        )
-
-        db.commit()
-        db.refresh(existing_email_user)
-
+        # Email is not an account identifier. Never transfer another identity's
+        # documents when an address is reused, or implicitly claim legacy data.
+        if existing_email_user.clerk_user_id != authenticated_user.clerk_user_id:
+            raise HTTPException(
+                status_code=409,
+                detail="This email belongs to another account. Sign in with your original account.",
+            )
         return existing_email_user
 
-    user = User(
-        clerk_user_id=
-            authenticated_user.clerk_user_id,
+    # Dashboard, sidebar, and document requests can arrive together on signup.
+    # PostgreSQL waits for the competing insert instead of raising a unique
+    # constraint error. Resolve the winner by verified Clerk identity only.
+    db.execute(insert(User).values(
+        clerk_user_id=authenticated_user.clerk_user_id,
         email=email,
-    )
-
-    db.add(user)
+    ).on_conflict_do_nothing())
     db.commit()
-    db.refresh(user)
-
+    user = db.scalar(statement)
+    if user is None:
+        raise HTTPException(
+            status_code=409,
+            detail="This email belongs to another account. Sign in with your original account.",
+        )
     return user

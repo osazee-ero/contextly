@@ -2,6 +2,7 @@
 
 import { useAuth } from "@clerk/nextjs";
 import { useCallback } from "react";
+import { authenticatedRequest } from "@/lib/authenticated-request";
 
 export function useAuthenticatedFetch() {
   const {
@@ -27,27 +28,7 @@ export function useAuthenticatedFetch() {
         );
       }
 
-      const token = await getToken();
-
-      if (!token) {
-        throw new Error(
-          "Unable to get authentication token."
-        );
-      }
-
-      const headers = new Headers(
-        init.headers
-      );
-
-      headers.set(
-        "Authorization",
-        `Bearer ${token}`
-      );
-
-      return fetch(input, {
-        ...init,
-        headers,
-      });
+      return authenticatedRequest(input, init, getToken);
     },
     [
       getToken,

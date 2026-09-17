@@ -21,3 +21,7 @@ evaluation
 tests
 
 *.log
+# Local archives and browser artifacts must not enter deployment images.
+*.zip
+**/test-results
+**/playwright-report

@@ -25,7 +25,7 @@ class Document(Base):
         String(255),
         nullable=False,
     )
-    
+
     storage_key: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
@@ -47,6 +47,8 @@ class Document(Base):
         nullable=False,
     )
 
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -57,13 +59,13 @@ class Document(Base):
         "User",
         back_populates="documents",
     )
-    
+
     chunks = relationship(
         "DocumentChunk",
         back_populates="document",
         cascade="all, delete-orphan",
     )
-    
-    
-    
-    
+
+
+
+

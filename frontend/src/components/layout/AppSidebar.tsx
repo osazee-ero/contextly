@@ -229,7 +229,7 @@ export default function AppSidebar() {
           </div>
 
           <p className="mt-3 text-[10px] text-zinc-700">
-            Resets tomorrow
+            Resets at midnight UTC
           </p>
         </div>
 

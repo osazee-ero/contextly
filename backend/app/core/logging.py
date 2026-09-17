@@ -1,6 +1,7 @@
 import json
 import logging
 import sys
+import traceback
 from datetime import datetime, timezone
 
 
@@ -69,11 +70,13 @@ class JsonFormatter(logging.Formatter):
                 )
 
         if record.exc_info:
-            log_record["exception"] = (
-                self.formatException(
-                    record.exc_info
-                )
-            )
+            # Provider/SQL exception messages can contain document contents,
+            # SQL parameters, or credentials. Keep diagnostic frames and type.
+            log_record["exception_type"] = record.exc_info[0].__name__
+            log_record["traceback"] = [
+                {"file": frame.filename, "line": frame.lineno, "function": frame.name}
+                for frame in traceback.extract_tb(record.exc_info[2])
+            ]
 
         return json.dumps(
             log_record,

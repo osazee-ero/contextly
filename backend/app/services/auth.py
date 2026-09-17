@@ -26,7 +26,7 @@ def get_authenticated_user(
         AuthenticateRequestOptions(
             secret_key=settings.clerk_secret_key,
             authorized_parties=[
-                settings.frontend_url,
+                settings.frontend_url.rstrip("/"),
             ],
             accepts_token=[
                 "session_token",

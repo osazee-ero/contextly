@@ -37,6 +37,7 @@ export type DocumentResponse = {
   file_size_bytes: number;
   page_count: number | null;
   status: string;
+  error_message?: string | null;
   created_at: string;
 };
 
@@ -397,10 +398,12 @@ export class ApiError extends Error {
   status: number;
 
   constructor(
-    message: string,
+    message: unknown,
     status: number
   ) {
-    super(message);
+    super(typeof message === "string" ? message : Array.isArray(message)
+      ? message.map((item) => typeof item?.msg === "string" ? item.msg : "Invalid request.").join(" ")
+      : "Something went wrong. Please try again.");
 
     this.name = "ApiError";
     this.status = status;
@@ -445,3 +448,12 @@ export async function getAuthMe(
   return response.json();
 }
 
+
+export async function retryDocument(documentId: string, apiFetch: ApiFetcher): Promise<DocumentResponse> {
+  const response = await apiFetch(`${API_URL}/api/documents/${documentId}/retry`, { method: "POST" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => null);
+    throw new ApiError(error?.detail ?? "Couldn't retry document processing.", response.status);
+  }
+  return response.json();
+}

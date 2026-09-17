@@ -34,6 +34,7 @@ from app.schemas.chat import (
 
 from app.services.answer_generation import (
     generate_answer,
+    GeneratedAnswer,
 )
 
 from app.services.current_user import (
@@ -212,6 +213,7 @@ def save_user_message(
     user_message = Message(
         conversation_id=conversation.id,
         role="user",
+        created_at=datetime.now(timezone.utc),
         content=question,
         citations=[],
         insufficient_context=False,
@@ -236,6 +238,7 @@ def save_assistant_message(
     assistant_message = Message(
         conversation_id=conversation.id,
         role="assistant",
+        created_at=datetime.now(timezone.utc),
         content=answer,
         citations=[
             citation.model_dump(
@@ -259,10 +262,7 @@ def save_assistant_message(
     return assistant_message
 
 
-@router.post(
-    "",
-    response_model=ChatResponse,
-)
+@router.post("", response_model=ChatResponse)
 def chat(
     payload: ChatRequest,
     request: Request,
@@ -270,405 +270,97 @@ def chat(
     user: User = Depends(get_current_user),
 ):
     question = payload.question.strip()
-
     if not question:
-        raise HTTPException(
-            status_code=400,
-            detail="Question cannot be empty.",
-        )
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    request_id = getattr(
-        request.state,
-        "request_id",
-        None,
-    )
+    user_id = user.id
+    # Reject inaccessible conversations before reserving a daily question.
+    if payload.conversation_id:
+        get_user_conversation(db, user_id, payload.conversation_id)
 
-    # -------------------------------------------------
-    # 1. Handle simple conversational messages
-    #    without embeddings, retrieval, LLM calls,
-    #    or question quota usage.
-    # -------------------------------------------------
+    request_id = getattr(request.state, "request_id", None)
+    conversational_response = get_conversational_response(question)
+    usage_date = datetime.now(timezone.utc).date()
+    quota_reserved = False
+    if not conversational_response:
+        try:
+            consume_question(db, user_id, usage_date)
+            quota_reserved = True
+        except QuestionLimitExceeded:
+            raise HTTPException(status_code=429, detail=(
+                "You've reached your daily limit of 20 questions. "
+                "Your quota resets at midnight UTC."
+            ))
 
-    conversational_response = (
-        get_conversational_response(
-            question
-        )
-    )
-
-    if conversational_response:
-        conversational_start = (
-            time.perf_counter()
-        )
-
-        conversation = (
-            get_or_create_conversation(
-                db=db,
-                user_id=user.id,
-                question=question,
-                conversation_id=(
-                    payload.conversation_id
-                ),
-            )
-        )
-
-        save_user_message(
-            db=db,
-            conversation=conversation,
-            question=question,
-        )
-
-        assistant_message = (
-            save_assistant_message(
-                db=db,
-                conversation=conversation,
-                answer=(
-                    conversational_response
-                ),
-                citations=[],
-                insufficient_context=False,
-            )
-        )
-
-        db.commit()
-
-        db.refresh(
-            assistant_message
-        )
-
-        conversational_duration_ms = (
-            time.perf_counter()
-            - conversational_start
-        ) * 1000
-
-        logger.info(
-            "Conversational message completed",
-            extra={
-                "event": (
-                    "conversation_completed"
-                ),
-                "request_id": request_id,
-                "user_id": str(
-                    user.id
-                ),
-                "conversation_id": str(
-                    conversation.id
-                ),
-                "total_duration_ms": round(
-                    conversational_duration_ms,
-                    2,
-                ),
-                "status": "success",
-            },
-        )
-
-        return ChatResponse(
-            conversation_id=(
-                conversation.id
-            ),
-            message_id=(
-                assistant_message.id
-            ),
-            answer=(
-                conversational_response
-            ),
-            citations=[],
-            insufficient_context=False,
-        )
-
-    # -------------------------------------------------
-    # 2. Real document question:
-    #    consume question quota.
-    # -------------------------------------------------
-
-    try:
-        consume_question(
-            db=db,
-            user_id=user.id,
-        )
-
-    except QuestionLimitExceeded:
-        logger.warning(
-            "Question quota exceeded",
-            extra={
-                "event": (
-                    "question_quota_exceeded"
-                ),
-                "request_id": request_id,
-                "user_id": str(
-                    user.id
-                ),
-                "status": "rejected",
-            },
-        )
-
-        raise HTTPException(
-            status_code=429,
-            detail=(
-                "You've reached your daily "
-                "limit of 20 questions. "
-                "Your quota resets tomorrow."
-            ),
-        )
-
-    # -------------------------------------------------
-    # 3. Get or create conversation
-    # -------------------------------------------------
-
-    conversation = (
-        get_or_create_conversation(
-            db=db,
-            user_id=user.id,
-            question=question,
-            conversation_id=(
-                payload.conversation_id
-            ),
-        )
-    )
-
-    # -------------------------------------------------
-    # 4. Save user message
-    # -------------------------------------------------
-
-    save_user_message(
-        db=db,
-        conversation=conversation,
-        question=question,
-    )
-
-    db.commit()
-
-    # -------------------------------------------------
-    # 5. Retrieve relevant chunks and generate
-    #    grounded answer.
-    # -------------------------------------------------
-
-    total_start = time.perf_counter()
-
+    start = time.perf_counter()
     retrieval_duration_ms = 0.0
     generation_duration_ms = 0.0
-
     retrieved_chunks = []
-
+    conversation = None
     try:
-        retrieval_start = (
-            time.perf_counter()
+        conversation = get_or_create_conversation(
+            db=db, user_id=user_id, question=question,
+            conversation_id=payload.conversation_id,
         )
+        save_user_message(db=db, conversation=conversation, question=question)
+        if conversational_response:
+            generated = GeneratedAnswer(conversational_response, False, [])
+        else:
+            retrieval_start = time.perf_counter()
+            retrieved_chunks = retrieve_chunks(db=db, user_id=user_id, query=question)
+            retrieval_duration_ms = (time.perf_counter() - retrieval_start) * 1000
+            generation_start = time.perf_counter()
+            generated = generate_answer(question=question, results=retrieved_chunks)
+            generation_duration_ms = (time.perf_counter() - generation_start) * 1000
 
-        retrieved_chunks = (
-            retrieve_chunks(
-                db=db,
-                user_id=user.id,
-                query=question,
-            )
+        citations = [Citation(
+            citation_number=cited.citation_number,
+            chunk_id=cited.source.chunk_id,
+            document_id=cited.source.document_id,
+            filename=cited.source.filename,
+            page_number=cited.source.page_number,
+            excerpt=cited.source.content[:300],
+        ) for cited in generated.sources]
+        assistant_message = save_assistant_message(
+            db=db, conversation=conversation, answer=generated.answer,
+            citations=citations, insufficient_context=generated.insufficient_context,
         )
-
-        retrieval_duration_ms = (
-            time.perf_counter()
-            - retrieval_start
-        ) * 1000
-
-        generation_start = (
-            time.perf_counter()
+        db.flush()
+        response = ChatResponse(
+            conversation_id=conversation.id, message_id=assistant_message.id,
+            answer=generated.answer, citations=citations,
+            insufficient_context=generated.insufficient_context,
         )
-
-        generated = generate_answer(
-            question=question,
-            results=retrieved_chunks,
-        )
-
-        generation_duration_ms = (
-            time.perf_counter()
-            - generation_start
-        ) * 1000
-
-    except Exception:
-        total_duration_ms = (
-            time.perf_counter()
-            - total_start
-        ) * 1000
-        
-        metrics.record_rag_failed()
-
-        logger.exception(
-            "RAG question failed",
-            extra={
-                "event": "rag_failed",
-                "request_id": request_id,
-                "user_id": str(
-                    user.id
-                ),
-                "conversation_id": str(
-                    conversation.id
-                ),
-                "retrieved_chunk_count": len(
-                    retrieved_chunks
-                ),
-                "retrieval_duration_ms": round(
-                    retrieval_duration_ms,
-                    2,
-                ),
-                "generation_duration_ms": round(
-                    generation_duration_ms,
-                    2,
-                ),
-                "total_duration_ms": round(
-                    total_duration_ms,
-                    2,
-                ),
-                "model": (
-                    settings.openai_chat_model
-                ),
-                "status": "error",
-            },
-        )
-
-        refund_question(
-            db=db,
-            user_id=user.id,
-        )
-
-        raise
-
-    # -------------------------------------------------
-    # 6. Build citations
-    # -------------------------------------------------
-
-    citations = [
-        Citation(
-            citation_number=(
-                cited.citation_number
-            ),
-            chunk_id=(
-                cited.source.chunk_id
-            ),
-            document_id=(
-                cited.source.document_id
-            ),
-            filename=(
-                cited.source.filename
-            ),
-            page_number=(
-                cited.source.page_number
-            ),
-            excerpt=(
-                cited.source.content[:300]
-            ),
-        )
-        for cited in generated.sources
-    ]
-
-    # -------------------------------------------------
-    # 7. Save assistant answer
-    # -------------------------------------------------
-
-    try:
-        assistant_message = (
-            save_assistant_message(
-                db=db,
-                conversation=conversation,
-                answer=generated.answer,
-                citations=citations,
-                insufficient_context=(
-                    generated.insufficient_context
-                ),
-            )
-        )
-
+        # Persist the question and answer together. A failed generation must not
+        # leave an orphan conversation or duplicate question behind on retry.
         db.commit()
-
-        db.refresh(
-            assistant_message
-        )
-
-    except Exception:
+    except Exception as error:
+        db.rollback()
+        if quota_reserved:
+            refund_question(db, user_id, usage_date)
         metrics.record_rag_failed()
-        logger.exception(
-            "Failed to save assistant message",
-            extra={
-                "event": (
-                    "assistant_message_save_failed"
-                ),
-                "request_id": request_id,
-                "user_id": str(
-                    user.id
-                ),
-                "conversation_id": str(
-                    conversation.id
-                ),
-                "status": "error",
-            },
-        )
+        logger.exception("Chat request failed", extra={
+            "event": "rag_failed", "request_id": request_id,
+            "user_id": str(user_id), "status": "error",
+        })
+        if isinstance(error, HTTPException):
+            raise
+        raise HTTPException(status_code=503, detail=(
+            "We couldn't generate an answer right now. Please try again. "
+            "This attempt didn't use a daily question."
+        )) from error
 
-        raise
-
-    # -------------------------------------------------
-    # 8. Calculate total RAG duration
-    # -------------------------------------------------
-
-    total_duration_ms = (
-        time.perf_counter()
-        - total_start
-    ) * 1000
-
-    # -------------------------------------------------
-    # 9. Log successful RAG request
-    # -------------------------------------------------
-    metrics.record_rag_completed(
-            total_duration_ms
-        )
-    logger.info(
-        "RAG question completed",
-        extra={
-            "event": "rag_completed",
-            "request_id": request_id,
-            "user_id": str(
-                user.id
-            ),
-            "conversation_id": str(
-                conversation.id
-            ),
-            "retrieved_chunk_count": len(
-                retrieved_chunks
-            ),
-            "citation_count": len(
-                citations
-            ),
-            "insufficient_context": (
-                generated.insufficient_context
-            ),
-            "retrieval_duration_ms": round(
-                retrieval_duration_ms,
-                2,
-            ),
-            "generation_duration_ms": round(
-                generation_duration_ms,
-                2,
-            ),
-            "total_duration_ms": round(
-                total_duration_ms,
-                2,
-            ),
-            "model": (
-                settings.openai_chat_model
-            ),
-            "status": "success",
-        },
-    )
-
-    # -------------------------------------------------
-    # 10. Return response
-    # -------------------------------------------------
-
-    return ChatResponse(
-        conversation_id=(
-            conversation.id
-        ),
-        message_id=(
-            assistant_message.id
-        ),
-        answer=generated.answer,
-        citations=citations,
-        insufficient_context=(
-            generated.insufficient_context
-        ),
-    )
+    total_duration_ms = (time.perf_counter() - start) * 1000
+    if quota_reserved:
+        metrics.record_rag_completed(total_duration_ms)
+    logger.info("Chat request completed", extra={
+        "event": "rag_completed" if quota_reserved else "conversation_completed",
+        "request_id": request_id, "user_id": str(user_id),
+        "conversation_id": str(response.conversation_id),
+        "retrieved_chunk_count": len(retrieved_chunks), "citation_count": len(citations),
+        "retrieval_duration_ms": round(retrieval_duration_ms, 2),
+        "generation_duration_ms": round(generation_duration_ms, 2),
+        "total_duration_ms": round(total_duration_ms, 2), "status": "success",
+        "model": settings.openai_chat_model,
+    })
+    return response

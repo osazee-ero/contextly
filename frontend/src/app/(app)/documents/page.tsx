@@ -31,6 +31,7 @@ import {
   DocumentResponse,
   getDocuments,
   uploadDocument,
+  retryDocument,
 } from "@/lib/api";
 
 import { useAuthenticatedFetch } from "@/hooks/use-authenticated-fetch";
@@ -49,6 +50,7 @@ export default function DocumentsPage() {
       isLoaded,
       isSignedIn,
     } = useAuth();
+  const [retryingDocumentId, setRetryingDocumentId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [activeFilter, setActiveFilter] = useState("All");
 
@@ -344,10 +346,11 @@ useEffect(() => {
 
     try {
       for (const file of selectedFiles) {
-        await uploadDocument(
-          file,
-          authenticatedFetch
-        );
+        try {
+          await uploadDocument(file, authenticatedFetch);
+        } catch (error) {
+          throw new Error(`${file.name}: ${error instanceof Error ? error.message : "Upload failed."}`);
+        }
         setSelectedFiles((files) => files.filter((pending) => pending !== file));
       }
 
@@ -365,6 +368,20 @@ useEffect(() => {
       await loadDocuments();
       window.dispatchEvent(new Event("contextly:usage-updated"));
       setIsUploading(false);
+    }
+  }
+
+  async function handleRetryDocument(documentId: string) {
+    if (retryingDocumentId) return;
+    setRetryingDocumentId(documentId);
+    setDocumentsError("");
+    try {
+      const updated = await retryDocument(documentId, authenticatedFetch);
+      setDocuments((current) => current.map((item) => item.id === documentId ? updated : item));
+    } catch (error) {
+      setDocumentsError(error instanceof Error ? error.message : "Couldn't retry processing.");
+    } finally {
+      setRetryingDocumentId(null);
     }
   }
 
@@ -507,7 +524,7 @@ useEffect(() => {
           <button
             onClick={openUploadModal}
             disabled={
-              documents.length >=
+              isLoadingDocuments || documents.length >=
               MAX_DOCUMENTS
             }
             className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
@@ -565,8 +582,9 @@ useEffect(() => {
 
         {/* Documents API Error */}
         {documentsError && (
-          <div className="mt-6 rounded-md border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-xs text-red-400">
-            {documentsError}
+          <div role="alert" className="mt-6 rounded-md border border-red-500/20 bg-red-500/[0.06] px-4 py-3 text-sm text-red-300">
+            <p>{documentsError}</p>
+            <button type="button" onClick={() => void loadDocuments()} className="mt-2 min-h-11 underline">Refresh documents</button>
           </div>
         )}
 
@@ -680,7 +698,7 @@ useEffect(() => {
                         )
                       }
                       disabled={
-                        deletingDocumentId ===
+                        retryingDocumentId !== null || deletingDocumentId ===
                           document.id ||
                         document.status.toLowerCase() ===
                           "processing"
@@ -706,6 +724,16 @@ useEffect(() => {
                         />
                       )}
                     </button>
+                  {document.status.toLowerCase() === "failed" && (
+                    <div className="col-span-full rounded-md border border-red-500/20 bg-red-500/5 p-3 text-sm leading-6 text-red-300 [overflow-wrap:anywhere]">
+                      <p>{document.error_message || "Processing failed. Try again, or upload a PDF with selectable text."}</p>
+                      <button type="button" onClick={() => void handleRetryDocument(document.id)}
+                        disabled={retryingDocumentId !== null || deletingDocumentId !== null}
+                        className="mt-2 inline-flex min-h-11 items-center gap-2 rounded border border-white/15 px-3 text-xs text-zinc-200 hover:bg-white/5 disabled:opacity-50">
+                        {retryingDocumentId === document.id ? "Starting..." : "Retry processing"}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             )
@@ -830,14 +858,14 @@ useEffect(() => {
 
               {/* Validation Error */}
               {fileError && (
-                <div className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-400">
+                <div role="alert" className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-400">
                   {fileError}
                 </div>
               )}
 
               {/* Upload Error */}
               {uploadError && (
-                <div className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-400">
+                <div role="alert" className="mt-3 rounded-md border border-red-500/20 bg-red-500/[0.06] px-3 py-2 text-xs text-red-400">
                   {uploadError}
                 </div>
               )}

@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.limits import (
     MAX_DOCUMENTS_PER_USER,
+    MAX_FILE_SIZE_BYTES,
     MAX_STORAGE_PER_USER_BYTES,
 )
 from app.db.session import get_db
@@ -62,7 +63,7 @@ def list_documents(
     response_model=DocumentResponse,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_document(
+def upload_document(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -71,6 +72,8 @@ async def upload_document(
     # -------------------------
     # Check document quota
     # -------------------------
+    # Serialize quota checks for this user, including concurrent browser tabs.
+    db.execute(select(User.id).where(User.id == user.id).with_for_update())
     document_count = (
         db.scalar(
             select(func.count())
@@ -122,7 +125,7 @@ async def upload_document(
     # -------------------------
     # Read uploaded file
     # -------------------------
-    file_bytes = await file.read()
+    file_bytes = file.file.read(MAX_FILE_SIZE_BYTES + 1)
 
     # -------------------------
     # Validate PDF
@@ -223,6 +226,31 @@ async def upload_document(
     return document
 
 
+@router.post("/{document_id}/retry", response_model=DocumentResponse,
+             status_code=status.HTTP_202_ACCEPTED)
+def retry_document(
+    document_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    document = db.scalar(select(Document).where(
+        Document.id == document_id, Document.user_id == user.id,
+    ).with_for_update())
+    if document is None:
+        raise HTTPException(status_code=404, detail="Document not found.")
+    if document.status != "failed":
+        raise HTTPException(status_code=409, detail="Only failed documents can be retried.")
+    if not document.storage_key:
+        raise HTTPException(status_code=409, detail="The file is missing. Delete this document and upload it again.")
+    document.status = "processing"
+    document.error_message = None
+    db.commit()
+    db.refresh(document)
+    background_tasks.add_task(ingest_document, document.id)
+    return document
+
+
 @router.delete(
     "/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -236,7 +264,7 @@ def delete_document(
         select(Document).where(
             Document.id == document_id,
             Document.user_id == user.id,
-        )
+        ).with_for_update()
     )
 
     if document is None:

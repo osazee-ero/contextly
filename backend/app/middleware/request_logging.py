@@ -61,7 +61,7 @@ class RequestLoggingMiddleware(
                         duration_ms,
                         2,
                     ),
-                    "status": "success",
+                    "status": "error" if response.status_code >= 400 else "success",
                 },
             )
 

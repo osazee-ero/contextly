@@ -102,3 +102,51 @@ test("failed first question can be retried and history refresh cannot replace a 
   await expect(page.getByText("Your answer was saved, but conversation history could not refresh.")).toBeVisible();
   expect(requests.map((request) => request.conversation_id)).toEqual([null, null]);
 });
+
+test("first dashboard visit recovers from expired auth and transient API failure", async ({ page }) => {
+  await mockApi(page);
+  let requests = 0;
+  await page.route("**/test-api/api/documents", async (route) => {
+    requests++;
+    await route.fulfill(requests === 1 ? { status: 401, json: { detail: "Authentication required." } }
+      : requests === 2 ? { status: 503, json: { detail: "Please try again." } }
+      : { json: [sampleDocument] });
+  });
+  await page.goto("/dashboard");
+  await expect(page.getByText(filename, { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(requests).toBe(3);
+});
+
+test("dashboard offers manual retry after automatic recovery is exhausted", async ({ page }) => {
+  await mockApi(page);
+  await page.route("**/test-api/api/documents", (route) => route.fulfill({ status: 503, json: { detail: "Temporarily unavailable." } }));
+  await page.goto("/dashboard");
+  await expect(page.getByRole("alert")).toContainText("Temporarily unavailable.");
+  await page.route("**/test-api/api/documents", (route) => route.fulfill({ json: [sampleDocument] }));
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(page.getByText(filename, { exact: true })).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("failed PDF explains the reason and can be retried without uploading again", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+  let status = "failed";
+  let retryCount = 0;
+  await page.route("**/test-api/api/documents", (route) => route.fulfill({ json: [{ ...sampleDocument, status,
+    error_message: status === "failed" ? "No readable text was found. Run OCR or upload a PDF with selectable text." : null }] }));
+  await page.route("**/test-api/api/documents/doc-1/retry", async (route) => {
+    retryCount++;
+    status = "ready";
+    await route.fulfill({ status: 202, json: { ...sampleDocument, status: "processing", error_message: null } });
+  });
+  await page.goto("/documents");
+  await expect(page.getByText("No readable text was found.", { exact: false })).toBeVisible();
+  await page.getByRole("button", { name: "Retry processing" }).click();
+  await expect(page.getByText("Processing", { exact: true }).last()).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry processing" })).toHaveCount(0);
+  await expect(page.getByText("Ready", { exact: true }).last()).toBeVisible();
+  expect(retryCount).toBe(1);
+  await noOverflow(page);
+});

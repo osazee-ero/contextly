@@ -32,6 +32,7 @@ def ingest_document(
 
     extraction_duration_ms = 0.0
     embedding_duration_ms = 0.0
+    failure_message = "We couldn't process this PDF. Try processing it again."
 
     try:
         # -------------------------------------------------
@@ -66,6 +67,7 @@ def ingest_document(
 
         if not document.storage_key:
             document.status = "failed"
+            document.error_message = "The uploaded file is missing. Delete this document and upload it again."
             db.commit()
 
             metrics.record_ingestion_failed()
@@ -95,6 +97,7 @@ def ingest_document(
         # -------------------------------------------------
 
         document.status = "processing"
+        document.error_message = None
         db.commit()
 
         logger.info(
@@ -117,6 +120,7 @@ def ingest_document(
         # 4. Read document from configured storage backend
         # -------------------------------------------------
 
+        failure_message = "We couldn't read the stored PDF. Try again in a moment."
         try:
             pdf_bytes = read_file_bytes(
                 document.storage_key
@@ -124,6 +128,7 @@ def ingest_document(
 
         except FileNotFoundError:
             document.status = "failed"
+            document.error_message = "The uploaded file is missing. Delete this document and upload it again."
             db.commit()
 
             metrics.record_ingestion_failed()
@@ -176,6 +181,7 @@ def ingest_document(
             time.perf_counter()
         )
 
+        failure_message = "The PDF text couldn't be read. Export a new, unencrypted PDF and upload it again."
         reader = PdfReader(
             BytesIO(pdf_bytes)
         )
@@ -233,6 +239,7 @@ def ingest_document(
 
         if not chunk_records:
             document.status = "failed"
+            document.error_message = "No readable text was found. This may be a scanned PDF. Run OCR or upload a PDF with selectable text."
             db.commit()
 
             metrics.record_ingestion_failed()
@@ -288,6 +295,7 @@ def ingest_document(
             time.perf_counter()
         )
 
+        failure_message = "The AI indexing service is temporarily unavailable. Your PDF is saved; try processing it again shortly."
         embeddings = embed_texts(
             texts
         )
@@ -313,6 +321,7 @@ def ingest_document(
         # 10. Store chunks and embeddings
         # -------------------------------------------------
 
+        failure_message = "We couldn't save the document index. Your PDF is saved; try processing it again."
         for record, embedding in zip(
             chunk_records,
             embeddings,
@@ -350,6 +359,7 @@ def ingest_document(
         # -------------------------------------------------
 
         document.status = "ready"
+        document.error_message = None
 
         db.commit()
 
@@ -452,6 +462,7 @@ def ingest_document(
 
         if document:
             document.status = "failed"
+            document.error_message = failure_message
             db.commit()
 
     finally:

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
@@ -16,6 +16,7 @@ class QuestionLimitExceeded(Exception):
 def consume_question(
     db: Session,
     user_id: uuid.UUID,
+    usage_date: date | None = None,
 ) -> int:
     """
     Atomically consume one question from
@@ -27,9 +28,7 @@ def consume_question(
     daily limit has already been reached.
     """
 
-    today = datetime.now(
-        timezone.utc
-    ).date()
+    today = usage_date or datetime.now(timezone.utc).date()
 
     statement = (
         insert(DailyUsage)
@@ -79,15 +78,14 @@ def consume_question(
 def refund_question(
     db: Session,
     user_id: uuid.UUID,
+    usage_date: date | None = None,
 ) -> None:
     """
     Refund one question when Contextly
     fails internally after reserving quota.
     """
 
-    today = datetime.now(
-        timezone.utc
-    ).date()
+    today = usage_date or datetime.now(timezone.utc).date()
 
     usage = (
         db.query(DailyUsage)
@@ -100,6 +98,7 @@ def refund_question(
     )
 
     if usage is None:
+        db.rollback()
         return
 
     if usage.question_count > 0:

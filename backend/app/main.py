@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.health import router as health_router
@@ -41,19 +42,19 @@ app = FastAPI(
 
 
 app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[settings.frontend_url],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-app.add_middleware(
-    RequestIdMiddleware
-)
-
-app.add_middleware(
     RequestLoggingMiddleware
 )
+app.add_middleware(RequestIdMiddleware)
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, _error: Exception):
+    request_id = getattr(request.state, "request_id", "")
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Contextly couldn't complete this request. Please try again.", "request_id": request_id},
+        headers={"X-Request-ID": request_id},
+    )
 
 
 app.include_router(
@@ -107,3 +108,16 @@ def root():
     return {
         "message": "Contextly API",
     }
+
+
+# Keep CORS outside ServerErrorMiddleware so failures are readable by browsers,
+# instead of disguising every unhandled server error as "Failed to fetch".
+api = app
+app = CORSMiddleware(
+    app=api,
+    allow_origins=[settings.frontend_url.rstrip("/")],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    expose_headers=["X-Request-ID"],
+)

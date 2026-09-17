@@ -34,5 +34,5 @@ tzdata==2026.3
 uvicorn==0.52.4
 watchfiles==1.2.0
 websockets==17.1
-clerk-backend-api
-boto3
+clerk-backend-api==7.0.0
+boto3==1.43.97
