@@ -1,537 +1,169 @@
 # Contextly
 
-### Your knowledge, grounded.
+**A deployed document Q&A application with answers you can trace to a PDF and page.**
 
-Contextly is a production-style Retrieval-Augmented Generation (RAG) application for asking questions over private documents and receiving answers backed by verifiable source citations.
+Upload PDFs, ask questions, and inspect the evidence behind each answer. Contextly combines hybrid retrieval with authenticated document ownership, persistent conversations, usage limits, and cloud deployment.
 
-Users can securely upload PDF documents, build a private knowledge base, and ask natural-language questions. Contextly combines semantic vector search with PostgreSQL full-text search to retrieve relevant evidence before generating citation-backed answers.
+[Live application](https://contextly.osazeeero.com) | [Deployment guide](docs/UPDATE.md) | [Retrieval evaluation](backend/evaluation/evaluate_retrieval.py) | [Regression tests](backend/tests/test_regressions.py)
 
-**Live application:** https://contextly.osazeeero.com
+![Contextly chat with document citations](docs/images/chat.png)
 
----
+## What this project demonstrates
 
-## Product Preview
+- **RAG engineering:** page-aware text extraction, chunking, semantic search, PostgreSQL full-text search, and Reciprocal Rank Fusion.
+- **Application engineering:** Next.js frontend, FastAPI backend, Clerk authentication, and PostgreSQL persistence.
+- **Reliability:** actionable PDF failure messages, retry processing, signup recovery, and question/answer transactions with quota refunds on failure.
+- **Deployment:** Vercel frontend; Dockerized API on AWS ECS Fargate; RDS/pgvector and private S3 storage.
+- **Evaluation:** separate retrieval and citation checks, plus regression coverage for account isolation and failure recovery.
 
-### Landing Page
+## Try it
 
-![Contextly Landing Page](docs/images/landing.png)
+1. Sign up at the [live application](https://contextly.osazeeero.com).
+2. Upload a PDF with selectable text and wait for **Ready**.
+3. Ask a question answered in the document.
+4. Inspect the returned document and page citations.
 
-### Knowledge Dashboard
+The current limits are 10 documents, 100 MB total storage, 10 MB per PDF, and 20 questions per day. The daily quota resets at midnight UTC. Scanned PDFs need OCR before upload; Contextly does not perform OCR.
 
-![Contextly Dashboard](docs/images/dashboard.png)
+<details>
+<summary>More screenshots</summary>
 
-### Document Management
+![Landing page](docs/images/landing.png)
+![Dashboard](docs/images/dashboard.png)
+![Document management](docs/images/documents.png)
 
-![Contextly Documents](docs/images/documents.png)
-
-### Grounded Q&A with Citations
-
-![Contextly Chat](docs/images/chat.png)
-
----
-
-## Why I Built Contextly
-
-Large language models can generate convincing answers even when the underlying information is incorrect or unavailable.
-
-Contextly was built around a different principle:
-
-> **Retrieve evidence first. Generate from evidence second.**
-
-The system creates a private knowledge base from a user's documents and retrieves relevant passages for each question. The language model is instructed to answer from this retrieved context and return citations that can be traced back to the source document and page.
-
-The project was also an exercise in taking RAG beyond a prototype: authentication, tenant isolation, retrieval evaluation, usage controls, persistent conversations, private object storage, observability, containerization, and cloud deployment are all part of the system.
-
----
-
-## Key Features
-
-- **Private document knowledge bases** — authenticated users maintain isolated document collections.
-- **PDF ingestion pipeline** — validates, stores, extracts, chunks, embeds, and indexes uploaded documents.
-- **Hybrid retrieval** — combines vector similarity search with PostgreSQL full-text search.
-- **Reciprocal Rank Fusion (RRF)** — merges semantic and lexical retrieval rankings.
-- **Citation-backed answers** — responses include references to retrieved source documents and pages.
-- **Persistent conversations** — conversations and messages are stored and scoped to each user.
-- **Usage controls** — document, storage, and daily question limits are enforced server-side.
-- **Authentication & tenant isolation** — Clerk authentication with backend ownership enforcement.
-- **Production observability** — request IDs, structured logging, latency measurements, and usage metrics.
-- **Cloud deployment** — containerized FastAPI backend deployed on AWS ECS with PostgreSQL/pgvector on RDS and private document storage in S3.
-
----
+</details>
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-    U[User] --> FE[Next.js Frontend<br/>Vercel]
-
-    FE --> AUTH[Clerk<br/>Authentication]
-    FE -->|HTTPS + Bearer Token| ALB[AWS Application<br/>Load Balancer]
-
-    ALB --> API[FastAPI Backend<br/>AWS ECS / Fargate]
-
-    API --> AUTH
-    API --> DB[(PostgreSQL<br/>AWS RDS + pgvector)]
-    API --> S3[(Private AWS S3<br/>Document Storage)]
-    API --> OAI[OpenAI API]
-
-    DB --> API
-    S3 --> API
-    OAI --> API
+    Browser[Next.js on Vercel] --> Clerk[Clerk authentication]
+    Browser -->|HTTPS and session token| ALB[Application Load Balancer]
+    ALB --> API[FastAPI on ECS Fargate]
+    API --> Clerk
+    API --> DB[(RDS PostgreSQL and pgvector)]
+    API --> Storage[(Private S3 bucket)]
+    API --> OpenAI[OpenAI API]
 ```
 
-### Production request path
+**Ingestion:** validate PDF, save file, extract text and page numbers, split text, embed in batches, and store chunks. Failed processing retains an explanation and can retry the saved file.
 
-```text
-Browser
-   ↓
-Next.js / Vercel
-   ↓
-Clerk Authentication
-   ↓ HTTPS
-api.osazeeero.com
-   ↓
-AWS Application Load Balancer
-   ↓
-FastAPI on ECS Fargate
-   ├── PostgreSQL + pgvector / RDS
-   ├── Private S3 document storage
-   └── OpenAI API
+**Question answering:** retrieve semantic and lexical candidates, combine rankings using RRF, supply the selected evidence to the model, validate citation references, and save the question and answer together.
+
+Current defaults use 1,200-character chunks with 200-character overlap and `text-embedding-3-small`. The retrieval pipeline merges two candidate lists with RRF (`K=60`) and returns up to five chunks. See [retrieval.py](backend/app/services/retrieval.py) and [answer_generation.py](backend/app/services/answer_generation.py) for the exact selection and citation logic.
+
+## Evaluation and verification
+
+The repository includes a 30-question dataset mapping questions to expected filenames and pages. Previously reported project results are preserved below; they were **not rerun during the README cleanup**.
+
+| Measure | Reported result |
+| --- | ---: |
+| Recall@1 | 63.33% |
+| Recall@3 | 86.67% |
+| Recall@5 | 86.67% |
+| Mean Reciprocal Rank | 0.7444 |
+| Answer generated successfully | 96.67% |
+| Expected-page citation match | 86.67% |
+
+These are a small project-specific baseline, not a general benchmark. Citation matching checks whether an expected document/page appears; it does not establish factual correctness of the entire answer.
+
+To reproduce evaluation, load the matching source PDFs into your development account, adjust `EVAL_USER_EMAIL` in each evaluation script, and review [dataset.json](backend/evaluation/dataset.json). Then run from `backend`:
+
+```bash
+python -m evaluation.evaluate_retrieval
+python -m evaluation.evaluate_answers
 ```
 
-TLS termination is handled through AWS Application Load Balancer + AWS Certificate Manager for the API domain.
+These scripts call the configured OpenAI services and require indexed documents. Results depend on the documents, model configuration, and current code.
 
----
+The September 2026 reliability update passed **17 backend integration tests** and **10 Playwright browser tests**. Backend tests use disposable local PostgreSQL with mocked Clerk/OpenAI; browser tests use component fixtures with mocked authentication and API responses. They are not full live-provider end-to-end tests. Local database setup and commands are in the [release guide](docs/UPDATE.md#local-verification).
 
-## RAG Pipeline
+## Run locally
 
-Contextly uses a hybrid retrieval pipeline rather than relying solely on embedding similarity.
+Use Docker for PostgreSQL and run the API and frontend locally. This avoids the existing Compose backend's AWS credential mount and separate deployment configuration.
 
-```text
-PDF Upload
-    ↓
-File Validation
-    ↓
-Private Object Storage
-    ↓
-PDF Text + Page Extraction
-    ↓
-Chunking
-    ↓
-OpenAI Embeddings
-    ↓
-PostgreSQL + pgvector
-    ↓
-┌───────────────────────┐
-│                       │
-Semantic Retrieval   Full-Text Retrieval
-   top 20                top 20
-│                       │
-└───────────┬───────────┘
-            ↓
-Reciprocal Rank Fusion
-        RRF (K=60)
-            ↓
-       Top 5 Chunks
-            ↓
-Prompt Construction
-            ↓
-LLM Answer Generation
-            ↓
-Citation Validation
-            ↓
-Grounded Response
-```
-
-### Chunking
-
-Documents are currently chunked using:
-
-```text
-Chunk size:    1,200 characters
-Chunk overlap:   200 characters
-```
-
-Each chunk retains metadata including its document and source page.
-
-### Semantic retrieval
-
-Document chunks are embedded with:
-
-```text
-text-embedding-3-small
-```
-
-Embeddings are stored using `pgvector` and retrieved using cosine distance.
-
-### Lexical retrieval
-
-A second, independent retrieval path uses PostgreSQL full-text search.
-
-This helps recover passages containing important exact terminology that semantic retrieval alone may rank poorly.
-
-### Reciprocal Rank Fusion
-
-The two ranked result sets are combined using Reciprocal Rank Fusion:
-
-```text
-RRF score = Σ 1 / (K + rank)
-
-K = 60
-```
-
-The final top five chunks are supplied as evidence to the answer-generation stage.
-
-This architecture was selected after evaluating multiple retrieval strategies rather than assuming a more complex pipeline would automatically perform better.
-
----
-
-## Retrieval Evaluation
-
-I built a dedicated evaluation dataset and scripts to measure retrieval performance independently from answer generation.
-
-### Final retrieval results
-
-| Metric | Result |
-|---|---:|
-| Recall@1 | **63.33%** |
-| Recall@3 | **86.67%** |
-| Recall@5 | **86.67%** |
-| Mean Reciprocal Rank (MRR) | **0.7444** |
-
-The evaluation set contains questions mapped to expected source documents/pages.
-
-Several retrieval configurations were tested, including:
-
-- vector-only retrieval,
-- semantic retrieval with keyword reranking,
-- larger semantic candidate pools,
-- independent PostgreSQL full-text search,
-- hybrid retrieval with Reciprocal Rank Fusion,
-- alternative chunk sizes.
-
-The final production pipeline uses independent semantic + lexical retrieval followed by RRF.
-
-The evaluation process also highlighted an important engineering lesson: increasing retrieval complexity does not necessarily improve measured retrieval quality. After the hybrid pipeline reached the same Recall@5 ceiling as further experiments, I stopped tuning rather than overfitting the evaluation set.
-
----
-
-## Answer & Citation Evaluation
-
-Answer generation was evaluated separately from retrieval.
-
-| Metric | Result |
-|---|---:|
-| Answer generated successfully | **96.67%** |
-| Expected-page citation match | **86.67%** |
-
-The citation metric measures whether the expected source document/page appears among the returned citations. It should **not** be interpreted as a complete factual-groundedness score.
-
-Keeping retrieval and generation evaluation separate makes it easier to determine whether a failure originates from evidence retrieval or answer generation.
-
----
-
-## Authentication & Tenant Isolation
-
-Contextly uses **Clerk** for identity and session management.
-
-The backend does not trust user identifiers supplied by the browser. Instead:
-
-```text
-Browser
-   ↓
-Clerk session token
-   ↓
-FastAPI verifies token
-   ↓
-Verified Clerk user ID
-   ↓
-Internal Contextly user
-   ↓
-Ownership-scoped database queries
-```
-
-Documents, conversations, messages, chunks, and usage records are scoped to the authenticated user.
-
-Tenant isolation was tested using multiple Clerk accounts to verify that one user cannot retrieve another user's documents or conversations.
-
----
-
-## Usage & Resource Controls
-
-The application enforces resource limits on the backend rather than relying on frontend UI restrictions.
-
-Current free-plan limits include:
-
-```text
-Documents:          10
-Questions per day:  20
-Storage:            100 MB
-Maximum PDF size:   10 MB
-```
-
-Daily question consumption is handled atomically to reduce quota race conditions.
-
-The frontend displays usage information, but the database/backend remains the source of truth.
-
----
-
-## Document Processing
-
-Each uploaded PDF follows an independent lifecycle:
-
-```text
-Upload
-  ↓
-Validation
-  ↓
-Storage
-  ↓
-Processing
-  ↓
-Text extraction
-  ↓
-Chunking
-  ↓
-Embedding
-  ↓
-Indexing
-  ↓
-Ready
-```
-
-The upload layer validates:
-
-- file extension,
-- MIME type,
-- PDF signature,
-- file size,
-- empty files,
-- encrypted PDFs,
-- parseability,
-- page count.
-
-Documents are stored using generated storage keys rather than trusting user-provided filenames.
-
-The frontend polls processing documents until they transition to `Ready` or `Failed`. Failed documents show a safe, actionable reason and support retrying the saved PDF without consuming another upload slot. Embeddings are generated in bounded batches.
-
----
-
-## Security Design
-
-Several production-oriented security decisions are built into Contextly:
-
-- Clerk-issued session tokens are verified by the backend.
-- Resource ownership is enforced server-side.
-- S3 buckets are private with public access blocked.
-- ECS accesses S3 through an IAM task role rather than embedded AWS credentials.
-- Application secrets are stored in AWS Secrets Manager.
-- RDS is not publicly accessible.
-- PostgreSQL accepts database traffic from the ECS security group rather than the public internet.
-- The public API is exposed through HTTPS using an Application Load Balancer and ACM certificate.
-- Sensitive document contents, prompts, answers, embeddings, and API keys are excluded from application logs.
-
----
-
-## Observability
-
-The FastAPI service includes structured request logging with request IDs and latency measurements.
-
-RAG requests record operational information such as:
-
-```text
-request_id
-request duration
-retrieval timing
-generation timing
-request outcome
-quota outcome
-```
-
-Sensitive document and conversation contents are intentionally excluded from logs.
-
-This provides enough information to diagnose production failures without unnecessarily logging private user data.
-
----
-
-## Technology Stack
-
-| Layer | Technology |
-|---|---|
-| Frontend | Next.js, TypeScript, Tailwind CSS |
-| Authentication | Clerk |
-| Backend | FastAPI, Python |
-| Database | PostgreSQL |
-| Vector Search | pgvector |
-| Lexical Search | PostgreSQL Full-Text Search |
-| Embeddings | OpenAI `text-embedding-3-small` |
-| LLM | OpenAI API |
-| Object Storage | Amazon S3 |
-| Backend Compute | AWS ECS / Fargate |
-| Database Hosting | Amazon RDS |
-| Load Balancing | AWS Application Load Balancer |
-| TLS | AWS Certificate Manager |
-| Secrets | AWS Secrets Manager |
-| Frontend Hosting | Vercel |
-| Containers | Docker |
-| Database Migrations | Alembic |
-
----
-
-## Repository Structure
-
-```text
-contextly/
-├── backend/
-│   ├── alembic/
-│   ├── app/
-│   │   ├── api/
-│   │   ├── core/
-│   │   ├── models/
-│   │   ├── schemas/
-│   │   └── services/
-│   ├── evaluation/
-│   ├── Dockerfile
-│   └── requirements.txt
-│
-├── frontend/
-│   ├── src/
-│   │   ├── app/
-│   │   ├── components/
-│   │   ├── hooks/
-│   │   └── lib/
-│   ├── Dockerfile
-│   └── package.json
-│
-├── docs/
-│   └── images/
-│
-├── .env.example
-├── docker-compose.yml
-└── README.md
-```
-
----
-
-## Running Locally
-
-### Prerequisites
-
-You will need:
-
-- Docker / Docker Compose
-- Node.js
-- Python
-- PostgreSQL with pgvector
-- Clerk application credentials
-- OpenAI API credentials
-
-Clone the repository:
+Prerequisites: Docker Desktop, Python 3.12, Node.js compatible with Next.js 16, a Clerk development application, and an OpenAI API key with access to the configured models.
 
 ```bash
 git clone https://github.com/osazee-ero/contextly.git
 cd contextly
 ```
 
-Create your environment configuration from the provided example:
+1. Copy the root `.env.example` to `.env` and set the local PostgreSQL values. Start only the database:
 
 ```bash
-cp .env.example .env
+docker compose up -d db
 ```
 
-Add the required development credentials to your local `.env`.
+2. Create `backend/.env` with the following settings. Substitute the database values from the root `.env`; the exposed database port is **5433**.
 
-> Never commit real API keys, database passwords, Clerk secrets, or AWS credentials.
+```dotenv
+DATABASE_URL=postgresql+psycopg://contextly:change_me@localhost:5433/contextly
+FRONTEND_URL=http://localhost:3000
+STORAGE_BACKEND=local
+OPENAI_API_KEY=your_openai_key
+CLERK_SECRET_KEY=your_clerk_secret_key
+CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+```
 
-Start the local services:
+The chat model defaults to the value in [config.py](backend/app/core/config.py); use `OPENAI_CHAT_MODEL` in `backend/.env` to select a model your account can access.
+
+3. Set up and start the backend:
 
 ```bash
-docker compose up --build
+cd backend
+python -m venv .venv
 ```
 
-The development application is available through the configured frontend and backend ports.
+Activate it with `source .venv/bin/activate` on macOS/Linux, or `.venv\Scripts\Activate.ps1` in PowerShell. Then:
 
-Database schema changes are managed through Alembic migrations.
-
----
-
-## Engineering Trade-offs & Future Improvements
-
-Contextly is intentionally scoped as a focused RAG product rather than a collection of unrelated AI features.
-
-Several improvements would be appropriate as usage scales:
-
-**Background processing**
-
-Document ingestion currently uses application background processing. A dedicated worker/queue architecture would provide stronger retry behavior and workload isolation at higher volume.
-
-**Database search optimization**
-
-PostgreSQL full-text retrieval could be further optimized with a stored `tsvector` column and GIN index as the corpus grows.
-
-**Infrastructure isolation**
-
-The current architecture can be extended with private ECS networking and VPC endpoints/NAT where appropriate.
-
-**Evaluation**
-
-The existing retrieval and citation benchmarks provide a repeatable baseline. Future evaluation could add answer faithfulness, context precision, context recall, and adversarial document tests.
-
-**Document formats**
-
-The current MVP focuses on PDFs. Additional formats such as DOCX, TXT, and HTML can be added behind the same ingestion abstraction.
-
-These are deliberate next-stage improvements rather than requirements for validating the core product.
-
----
-
-## What This Project Demonstrates
-
-Contextly was built to demonstrate the complete lifecycle of a production AI application:
-
-```text
-Product design
-      ↓
-Frontend engineering
-      ↓
-API design
-      ↓
-Authentication
-      ↓
-Data modeling
-      ↓
-RAG / retrieval engineering
-      ↓
-Evaluation
-      ↓
-Security & tenant isolation
-      ↓
-Observability
-      ↓
-Containerization
-      ↓
-Cloud infrastructure
-      ↓
-Production deployment
+```bash
+python -m pip install -r requirements.txt
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
 ```
 
-The focus is not simply calling an LLM API, but building the surrounding engineering required to make an AI system reliable, measurable, secure, and usable.
+4. In another terminal, create `frontend/.env.local`:
 
----
+```dotenv
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_publishable_key
+CLERK_SECRET_KEY=your_clerk_secret_key
+```
 
-## Author
+Use keys from the same Clerk development application, with localhost configured for development. From `frontend`:
 
-**Osazee Ero**  
-AI & Machine Learning Engineer
+```bash
+npm ci
+npm run dev
+```
 
-- GitHub: https://github.com/osazee-ero
-- LinkedIn: https://linkedin.com/in/osazeeero
-- Live project: https://contextly.osazeeero.com
+Open http://localhost:3000. API documentation is at http://localhost:8000/docs. Keep credentials in ignored environment files.
 
----
+## Engineering choices and current limits
 
-Built as an end-to-end production AI engineering project.
+- **One database for retrieval and application state:** PostgreSQL provides vector search, lexical search, conversations, and ownership-scoped queries.
+- **Evidence before generation:** citations expose source passages for inspection; retrieval and generation can still be wrong.
+- **Server-enforced limits:** upload quota checks are serialized per user; failed chat requests roll back partial messages and refund their reserved question.
+- **Background ingestion:** FastAPI background tasks are not durable across process termination. A worker queue is needed for guaranteed recovery during deployment or shutdown.
+- **PDF scope:** no OCR or additional document formats yet.
+- **Operational visibility:** request IDs, structured application logs, and bounded in-process timing samples. Metrics reset when the process restarts.
 
-## Updating the deployed app
+## Repository map
 
-See [the release guide](docs/UPDATE.md) for the ECR build, ECS database migration, service rollout, and Vercel update sequence. This release requires Alembic revision `a82e31c49f10` before deploying the new backend.
+| Path | Purpose |
+| --- | --- |
+| `backend/app/` | API routes, database models, ingestion, retrieval, generation |
+| `backend/alembic/` | Database migrations |
+| `backend/evaluation/` | Dataset and retrieval/answer evaluation scripts |
+| `backend/tests/` | Local database regression tests |
+| `frontend/src/` | Next.js application |
+| `frontend/tests/` | Playwright component-fixture browser checks |
+| `docs/UPDATE.md` | ECR image, ECS migration, backend rollout, and frontend verification |
+
+## Deployment
+
+The frontend deploys through Vercel; a GitHub push does not deploy the ECS backend. Follow [docs/UPDATE.md](docs/UPDATE.md), including the database migration **before** updating the backend service.
+
+Built by [Osazee Ero](https://github.com/osazee-ero), AI & Machine Learning Engineer.
