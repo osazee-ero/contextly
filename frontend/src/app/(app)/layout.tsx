@@ -12,7 +12,7 @@ export default async function AppLayout({
     <div className="min-h-screen bg-[#09090B] text-zinc-100">
       <AppSidebar />
 
-      <main className="min-h-screen pl-[220px]">
+      <main className="min-h-0 min-w-0 lg:min-h-screen lg:pl-[220px]">
         {children}
       </main>
     </div>

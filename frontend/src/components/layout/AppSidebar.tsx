@@ -78,8 +78,6 @@ export default function AppSidebar() {
       }
 
       try {
-        setIsLoadingUsage(true);
-
         const data =
           await getUsage(
             authenticatedFetch
@@ -105,6 +103,8 @@ export default function AppSidebar() {
       return;
     }
 
+    // Fetch external data on mount; state changes follow the asynchronous response.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadUsage();
 
     function handleUsageUpdated() {
@@ -146,20 +146,24 @@ export default function AppSidebar() {
       : 0;
 
   return (
-    <aside className="fixed inset-y-0 left-0 flex w-[220px] flex-col border-r border-white/[0.06] bg-[#09090B]">
+    <aside className="relative z-30 flex w-full flex-col lg:fixed lg:inset-y-0 lg:left-0 lg:w-[220px] lg:overflow-y-auto border-r border-white/[0.06] bg-[#09090B]">
       {/* Logo */}
-      {/* Logo */}
-      <div className="flex h-16 items-center border-b border-white/[0.06] px-5">
+      <div className="flex h-14 shrink-0 items-center justify-between border-b lg:h-16 border-white/[0.06] px-5">
         <Link
           href="/"
           className="text-sm font-semibold text-zinc-100 transition hover:text-white"
         >
           Contextly
         </Link>
+        <div className="lg:hidden">
+          <SignOutButton redirectUrl="/">
+            <button type="button" className="min-h-11 px-2 text-xs text-zinc-400">Sign out</button>
+          </SignOutButton>
+        </div>
       </div>
 
       {/* Navigation */}
-      <nav className="space-y-1 px-3 py-4">
+      <nav aria-label="Main navigation" className="grid h-14 grid-cols-3 items-center gap-1 border-b border-white/[0.06] px-2 lg:block lg:h-auto lg:space-y-1 lg:border-0 lg:px-3 lg:py-4">
         {navigation.map((item) => {
           const isActive =
             pathname === item.href;
@@ -170,7 +174,8 @@ export default function AppSidebar() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex h-10 items-center gap-3 rounded-md px-3 text-sm transition ${
+              aria-current={isActive ? "page" : undefined}
+              className={`flex h-11 items-center justify-center gap-2 rounded-md px-2 text-xs sm:text-sm lg:justify-start lg:gap-3 lg:px-3 transition ${
                 isActive
                   ? "border border-blue-500/20 bg-blue-500/10 text-blue-400"
                   : "text-zinc-500 hover:bg-white/[0.03] hover:text-zinc-200"
@@ -195,7 +200,7 @@ export default function AppSidebar() {
       </nav>
 
       {/* Bottom */}
-      <div className="mt-auto space-y-3 p-3">
+      <div className="mt-auto hidden space-y-3 p-3 lg:block">
         {/* Usage */}
         <div className="rounded-lg border border-white/[0.07] bg-white/[0.015] p-3">
           <div className="flex items-center justify-between">
@@ -211,7 +216,7 @@ export default function AppSidebar() {
           <p className="mt-2 text-[11px] text-zinc-600">
             {isLoadingUsage
               ? "Loading usage..."
-              : `${questionsUsed} of ${questionsLimit} questions used`}
+              : !usage ? "Usage unavailable" : `${questionsUsed} of ${questionsLimit} questions used`}
           </p>
 
           <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/[0.06]">

@@ -7,7 +7,7 @@ export default async function Navbar() {
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 border-b border-white/[0.05] bg-[#09090B]/90 backdrop-blur-md">
-      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
+      <nav className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
         <div className="flex items-center gap-10">
           <Link
             href="/"
@@ -33,11 +33,11 @@ export default async function Navbar() {
           </div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3 sm:gap-4">
           {isSignedIn ? (
             <Link
               href="/dashboard"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
+              className="rounded-md bg-blue-600 px-3 py-2.5 text-xs sm:px-4 sm:text-sm font-medium text-white transition hover:bg-blue-500"
             >
               Dashboard
             </Link>
@@ -52,7 +52,7 @@ export default async function Navbar() {
 
               <Link
                 href="/sign-up"
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500"
+                className="rounded-md bg-blue-600 px-3 py-2.5 text-xs sm:px-4 sm:text-sm font-medium text-white transition hover:bg-blue-500"
               >
                 Get Started
               </Link>

@@ -4,13 +4,14 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import {
   FileText,
   Loader2,
-  MoreHorizontal,
+  Trash2,
   Search,
   Upload,
   X,
@@ -61,7 +62,14 @@ export default function DocumentsPage() {
     useState("");
 
   const [isUploadOpen, setIsUploadOpen] =
-    useState(false);
+    useState(searchParams.get("upload") === "true");
+
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    if (isUploadOpen) dialogRef.current?.showModal();
+    else dialogRef.current?.close();
+  }, [isUploadOpen]);
 
   const [selectedFiles, setSelectedFiles] =
     useState<File[]>([]);
@@ -87,14 +95,13 @@ export default function DocumentsPage() {
   const loadDocuments = useCallback(
   async () => {
     try {
-      setDocumentsError("");
-
       const data =
         await getDocuments(
           authenticatedFetch
         );
 
       setDocuments(data);
+      setDocumentsError("");
     } catch (error) {
       setDocumentsError(
         error instanceof Error
@@ -113,7 +120,9 @@ useEffect(() => {
     return;
   }
 
-  void loadDocuments();
+  // Fetch external data on mount; state changes follow the asynchronous response.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadDocuments();
 }, [
   loadDocuments,
   isLoaded,
@@ -191,11 +200,6 @@ useEffect(() => {
     return;
   }
 
-  setFileError("");
-  setUploadError("");
-  setSelectedFiles([]);
-  setIsUploadOpen(true);
-
   router.replace("/documents", {
     scroll: false,
   });
@@ -264,6 +268,7 @@ useEffect(() => {
       event.target.files ?? []
     );
 
+    event.target.value = "";
     setFileError("");
     setUploadError("");
     setSelectedFiles([]);
@@ -307,8 +312,6 @@ useEffect(() => {
 
     setSelectedFiles(files);
 
-    // Allows selecting the same file again later
-    event.target.value = "";
   }
 
   function removeSelectedFile(
@@ -327,6 +330,7 @@ useEffect(() => {
   }
 
   async function handleUpload() {
+    if (isUploading) return;
     if (selectedFiles.length === 0) {
       setFileError(
         "Select at least one PDF."
@@ -344,15 +348,8 @@ useEffect(() => {
           file,
           authenticatedFetch
         );
+        setSelectedFiles((files) => files.filter((pending) => pending !== file));
       }
-
-      await loadDocuments();
-
-      window.dispatchEvent(
-        new Event(
-          "contextly:usage-updated"
-        )
-      );
 
       setIsUploadOpen(false);
       setSelectedFiles([]);
@@ -365,6 +362,8 @@ useEffect(() => {
           : "Something went wrong while uploading."
       );
     } finally {
+      await loadDocuments();
+      window.dispatchEvent(new Event("contextly:usage-updated"));
       setIsUploading(false);
     }
   }
@@ -487,9 +486,9 @@ useEffect(() => {
 
   return (
     <div className="min-h-screen bg-[#09090B]">
-      <div className="mx-auto max-w-6xl px-10 py-12">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         {/* Header */}
-        <div className="flex items-start justify-between gap-6">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-6">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-blue-400">
               Knowledge base
@@ -534,6 +533,7 @@ useEffect(() => {
                   event.target.value
                 )
               }
+              aria-label="Search documents"
               placeholder="Search documents..."
               className="h-10 w-full rounded-md border border-white/[0.07] bg-white/[0.015] pl-9 pr-3 text-sm text-zinc-300 outline-none placeholder:text-zinc-700 transition focus:border-blue-500/40"
             />
@@ -586,7 +586,7 @@ useEffect(() => {
         {/* Documents Table */}
         <div className="mt-5 overflow-hidden rounded-xl border border-white/[0.07] bg-white/[0.01]">
           {/* Header */}
-          <div className="grid grid-cols-[minmax(0,1fr)_90px_120px_140px_40px] border-b border-white/[0.06] px-5 py-3 text-[10px] uppercase tracking-[0.15em] text-zinc-700">
+          <div className="hidden xl:grid xl:grid-cols-[minmax(0,1fr)_70px_100px_120px_44px] border-b border-white/[0.06] px-5 py-3 text-[10px] uppercase tracking-[0.15em] text-zinc-700">
             <span>Name</span>
             <span>Pages</span>
             <span>Status</span>
@@ -615,7 +615,7 @@ useEffect(() => {
                   key={
                     document.id
                   }
-                  className={`grid grid-cols-[minmax(0,1fr)_90px_120px_140px_40px] items-center px-5 py-4 ${
+                  className={`grid grid-cols-[minmax(0,1fr)_44px] items-center gap-y-3 px-4 py-4 xl:grid-cols-[minmax(0,1fr)_70px_100px_120px_44px] xl:gap-y-0 xl:px-5 ${
                     index !==
                     filteredDocuments.length -
                       1
@@ -646,13 +646,13 @@ useEffect(() => {
                   </div>
 
                   {/* Pages */}
-                  <span className="text-xs text-zinc-600">
-                    {document.page_count ??
+                  <span className="col-start-1 row-start-2 text-xs text-zinc-600 xl:col-auto xl:row-auto">
+                    <span className="xl:hidden">Pages: </span>{document.page_count ??
                       "—"}
                   </span>
 
                   {/* Status */}
-                  <div>
+                  <div className="col-start-1 row-start-3 xl:col-auto xl:row-auto">
                     <span
                       className={`inline-flex rounded-full border px-2 py-1 text-[10px] ${statusClasses(
                         document.status
@@ -665,8 +665,8 @@ useEffect(() => {
                   </div>
 
                   {/* Uploaded */}
-                  <span className="text-xs text-zinc-600">
-                    {formatDate(
+                  <span className="col-start-1 row-start-4 text-xs text-zinc-600 xl:col-auto xl:row-auto">
+                    <span className="xl:hidden">Uploaded: </span>{formatDate(
                       document.created_at
                     )}
                   </span>
@@ -685,7 +685,7 @@ useEffect(() => {
                         document.status.toLowerCase() ===
                           "processing"
                       }
-                      className="flex h-8 w-8 items-center justify-center rounded-md text-zinc-700 transition hover:bg-red-500/[0.08] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="col-start-2 row-start-1 flex h-11 w-11 items-center justify-center rounded-md text-zinc-500 transition xl:col-auto xl:row-auto hover:bg-red-500/[0.08] hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-30"
                       aria-label={`Delete ${document.filename}`}
                       title={
                         document.status.toLowerCase() ===
@@ -701,7 +701,7 @@ useEffect(() => {
                           className="animate-spin"
                         />
                       ) : (
-                        <MoreHorizontal
+                        <Trash2
                           size={16}
                         />
                       )}
@@ -736,25 +736,28 @@ useEffect(() => {
       </div>
 
       {/* Upload Modal */}
-      {isUploadOpen && (
-        <div
-          onClick={() => {
-            if (!isUploading) {
+      <dialog
+          ref={dialogRef}
+          aria-labelledby="upload-title"
+          onCancel={(event) => { event.preventDefault(); closeModal(); }}
+          onClose={closeModal}
+          onClick={(event) => {
+            if (event.target === event.currentTarget && !isUploading) {
               closeModal();
             }
           }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-6 backdrop-blur-sm"
+          className="m-auto max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-xl border border-white/[0.08] bg-[#111114] text-zinc-100 shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm"
         >
           <div
             onClick={(event) =>
               event.stopPropagation()
             }
-            className="w-full max-w-lg rounded-xl border border-white/[0.08] bg-[#111114] shadow-2xl"
+            className="w-full"
           >
             {/* Modal Header */}
             <div className="flex items-start justify-between border-b border-white/[0.06] px-6 py-5">
               <div>
-                <h2 className="text-base font-medium text-zinc-100">
+                <h2 id="upload-title" className="text-base font-medium text-zinc-100">
                   Upload documents
                 </h2>
 
@@ -821,7 +824,7 @@ useEffect(() => {
                   onChange={
                     handleFileChange
                   }
-                  className="hidden"
+                  className="sr-only"
                 />
               </label>
 
@@ -984,6 +987,8 @@ useEffect(() => {
                 disabled={
                   selectedFiles.length ===
                     0 ||
+                  isLoadingDocuments ||
+                  documents.length + selectedFiles.length > MAX_DOCUMENTS ||
                   isUploading
                 }
                 className="inline-flex h-10 min-w-[120px] items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-medium text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
@@ -1016,8 +1021,7 @@ useEffect(() => {
               </button>
             </div>
           </div>
-        </div>
-      )}
+        </dialog>
     </div>
   );
 }

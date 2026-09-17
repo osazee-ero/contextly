@@ -193,9 +193,9 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#09090B]">
-      <div className="mx-auto max-w-6xl px-10 py-12">
+      <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         {/* Header */}
-        <div className="flex items-start justify-between gap-6">
+        <div className="flex flex-col items-start justify-between gap-5 sm:flex-row sm:gap-6">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-blue-400">
               Dashboard
@@ -274,9 +274,9 @@ export default function DashboardPage() {
         </div>
 
         {/* Main content */}
-        <div className="mt-8 grid gap-6 lg:grid-cols-[1.35fr_0.85fr]">
+        <div className="mt-8 grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(0,0.85fr)]">
           {/* Recent documents */}
-          <section className="rounded-xl border border-white/[0.07] bg-white/[0.01]">
+          <section className="min-w-0 rounded-xl border border-white/[0.07] bg-white/[0.01]">
             <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
               <div>
                 <h2 className="text-sm font-medium text-zinc-200">
@@ -290,7 +290,7 @@ export default function DashboardPage() {
 
               <Link
                 href="/documents"
-                className="flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-200"
+                className="flex shrink-0 items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-200"
               >
                 View all
                 <ArrowUpRight size={13} />
@@ -364,7 +364,7 @@ export default function DashboardPage() {
           </section>
 
           {/* Recent conversations */}
-          <section className="rounded-xl border border-white/[0.07] bg-white/[0.01]">
+          <section className="min-w-0 rounded-xl border border-white/[0.07] bg-white/[0.01]">
             <div className="flex items-center justify-between border-b border-white/[0.06] px-5 py-4">
               <div>
                 <h2 className="text-sm font-medium text-zinc-200">
@@ -378,7 +378,7 @@ export default function DashboardPage() {
 
               <Link
                 href="/chat"
-                className="flex items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-200"
+                className="flex shrink-0 items-center gap-1 text-xs text-zinc-500 transition hover:text-zinc-200"
               >
                 View all
                 <ArrowUpRight size={13} />
@@ -396,7 +396,7 @@ export default function DashboardPage() {
                     index
                   ) => (
                     <Link
-                      href="/chat"
+                      href={`/chat?conversation=${conversation.id}`}
                       key={
                         conversation.id
                       }

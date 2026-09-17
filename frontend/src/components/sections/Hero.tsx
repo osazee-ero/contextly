@@ -4,7 +4,7 @@ export default function Hero() {
   return (
     // <section className="border-b border-white/5">
 <section>
-      <div className="mx-auto flex min-h-[720px] max-w-7xl flex-col items-center justify-center px-6 py-24 text-center">
+      <div className="mx-auto flex min-h-[600px] sm:min-h-[720px] max-w-7xl flex-col items-center justify-center px-6 py-24 text-center">
         <div className="rounded-full border border-blue-500/20 bg-blue-500/5 px-3 py-1 text-xs text-blue-400">
           RAG-powered · Source-verified
         </div>
@@ -20,7 +20,7 @@ export default function Hero() {
           guessed.
         </p>
 
-        <div className="mt-8 flex items-center gap-3">
+        <div className="mt-8 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
           <Link
             href="#product"
             className="rounded-md border border-white/10 px-5 py-2.5 text-sm text-zinc-300 transition hover:border-white/20 hover:text-white"

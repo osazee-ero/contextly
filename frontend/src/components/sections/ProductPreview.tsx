@@ -6,11 +6,11 @@ export default function ProductPreview() {
         <div className="overflow-hidden rounded-xl border border-white/10 bg-[#0D0D10] shadow-2xl shadow-black/20">
           <div className="flex h-10 items-center border-b border-white/10 px-4">
             <span className="text-xs text-zinc-500">
-              app.contextly.ai/workspace
+              Contextly workspace preview
             </span>
           </div>
 
-          <div className="grid min-h-[520px] grid-cols-1 lg:grid-cols-[260px_1fr_300px]">
+          <div className="grid min-h-[520px] grid-cols-1 lg:grid-cols-[220px_minmax(0,1fr)_260px]">
             <aside className="border-b border-white/10 p-5 lg:border-b-0 lg:border-r">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-zinc-500">
                 Documents

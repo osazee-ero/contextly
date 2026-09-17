@@ -30,6 +30,7 @@ import {
   getConversation,
   getConversations,
 } from "@/lib/api";
+import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
 
@@ -51,6 +52,9 @@ type Conversation = {
 
 
 export default function ChatPage() {
+  const searchParams = useSearchParams();
+  const requestedConversation = searchParams.get("conversation");
+  const [mobilePanel, setMobilePanel] = useState<"chat" | "history" | "sources">("chat");
   const [conversations, setConversations] =
     useState<Conversation[]>([]);
 
@@ -95,6 +99,14 @@ export default function ChatPage() {
     selectedCitation,
     setSelectedCitation,
   ] = useState<number | null>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messageCount = activeConversationId
+    ? conversations.find((item) => item.id === activeConversationId)?.messages.length ?? 0
+    : 0;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ block: "end" });
+  }, [messageCount, isLoading, activeConversationId]);
 
   const sourceRefs = useRef<
     Record<number, HTMLDivElement | null>
@@ -173,11 +185,14 @@ useEffect(() => {
           authenticatedFetch
         );
 
-      setConversations(
-        response.map(
-          mapConversationSummary
-        )
-      );
+      const summaries = response.map(mapConversationSummary);
+      if (requestedConversation && response.some((item) => item.id === requestedConversation)) {
+        const detail = mapConversationDetail(await getConversation(requestedConversation, authenticatedFetch));
+        setConversations(summaries.map((item) => item.id === detail.id ? detail : item));
+        setActiveConversationId(detail.id);
+      } else {
+        setConversations(summaries);
+      }
     } catch (error) {
       setLoadError(
         error instanceof Error
@@ -194,12 +209,14 @@ useEffect(() => {
   authenticatedFetch,
   isLoaded,
   isSignedIn,
+  requestedConversation,
 ]);
   
 
 async function handleDeleteConversation(
   conversationId: string
 ) {
+  if (isLoading || isLoadingConversation) return;
   const confirmed = window.confirm(
     "Delete this conversation? This cannot be undone."
   );
@@ -331,6 +348,7 @@ async function handleDeleteConversation(
     setSelectedCitation(
       citationNumber
     );
+    setMobilePanel("sources");
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
@@ -361,6 +379,7 @@ async function handleDeleteConversation(
     setSelectedCitation(null);
     setInput("");
     setLoadError(null);
+    setMobilePanel("chat");
   }
 
 
@@ -374,6 +393,7 @@ async function handleDeleteConversation(
       return;
     }
 
+    setMobilePanel("chat");
     if (
       conversationId ===
       activeConversationId
@@ -421,6 +441,8 @@ async function handleDeleteConversation(
     if (
       !question ||
       isLoading ||
+      isLoadingConversation ||
+      isLoadingConversations ||
       dailyLimitReached
     ) {
       return;
@@ -584,10 +606,11 @@ async function handleDeleteConversation(
        * PostgreSQL. This keeps ordering
        * and timestamps authoritative.
        */
-      const summaries =
-      await getConversations(
-        authenticatedFetch
-      );
+      const summaries = await getConversations(authenticatedFetch).catch(() => null);
+      if (!summaries) {
+        setLoadError("Your answer was saved, but conversation history could not refresh.");
+        return;
+      }
 
       setConversations(
         (
@@ -599,55 +622,23 @@ async function handleDeleteConversation(
           )
       );
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        error.status === 429
-      ) {
+      setInput(question);
+      setLoadError(error instanceof Error ? error.message : "Something went wrong while answering your question.");
+      if (error instanceof ApiError && error.status === 429) {
         setDailyLimitReached(true);
-
-        if (temporaryConversationId) {
-          setConversations(
-            (currentConversations) =>
-              currentConversations.filter(
-                (conversation) =>
-                  conversation.id !==
-                  temporaryConversationId
-              )
-          );
-
-          setActiveConversationId(null);
-          setActiveAssistantMessageId(null);
-          setSelectedCitation(null);
-        }
-
-        return;
       }
-
-      const errorMessage: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content:
-          error instanceof Error
-            ? error.message
-            : "Something went wrong while answering your question.",
-        citations: [],
-        insufficient_context: true,
-      };
-
-      const targetConversationId =
-        activeConversationId ??
-        temporaryConversationId;
-
-      if (targetConversationId) {
-        appendMessage(
-          targetConversationId,
-          errorMessage
-        );
+      // Remove optimistic messages so a failed first request can be retried
+      // without sending a temporary frontend ID to the API.
+      setConversations((current) => current
+        .filter((conversation) => conversation.id !== temporaryConversationId)
+        .map((conversation) => conversation.id === existingConversationId
+          ? { ...conversation, messages: conversation.messages.filter((message) => message.id !== temporaryUserMessageId) }
+          : conversation));
+      if (temporaryConversationId) {
+        setActiveConversationId(null);
+        setActiveAssistantMessageId(null);
+        setSelectedCitation(null);
       }
-
-      setActiveAssistantMessageId(
-        errorMessage.id
-      );
     } finally {
       setIsLoading(false);
     }
@@ -655,9 +646,19 @@ async function handleDeleteConversation(
 
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#09090B]">
+    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col overflow-hidden bg-[#09090B] lg:h-dvh">
+      <nav aria-label="Chat panels" className="flex shrink-0 gap-1 border-b border-white/[0.06] p-2 xl:hidden">
+        {(["history", "chat", "sources"] as const).map((panel) => (
+          <button key={panel} type="button" aria-pressed={mobilePanel === panel}
+            onClick={() => setMobilePanel(panel)}
+            className={`min-h-11 flex-1 rounded-md px-3 text-xs capitalize ${mobilePanel === panel ? "bg-blue-500/10 text-blue-400" : "text-zinc-400"}`}>
+            {panel === "history" ? "Conversations" : panel === "sources" ? `Sources (${activeSources.length})` : "Chat"}
+          </button>
+        ))}
+      </nav>
+      <div className="flex min-h-0 min-w-0 flex-1">
       {/* Conversation History */}
-      <aside className="flex w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#0B0B0E]">
+      <aside aria-label="Conversation history" className={`${mobilePanel === "history" ? "flex" : "hidden"} min-w-0 w-full flex-col border-r border-white/[0.06] bg-[#0B0B0E] xl:flex xl:w-[230px] xl:shrink-0`}>
         <div className="border-b border-white/[0.06] p-4">
           <button
             onClick={
@@ -689,6 +690,7 @@ async function handleDeleteConversation(
                   event.target.value
                 )
               }
+              aria-label="Search conversations"
               placeholder="Search conversations..."
               className="h-9 w-full rounded-md border border-white/[0.06] bg-white/[0.015] pl-8 pr-3 text-xs text-zinc-300 outline-none placeholder:text-zinc-700"
             />
@@ -781,7 +783,8 @@ async function handleDeleteConversation(
                                 conversation.id
                               );
                             }}
-                            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-zinc-700 opacity-0 transition hover:bg-red-500/[0.08] hover:text-red-400 group-hover:opacity-100"
+                            disabled={isLoading || isLoadingConversation}
+                            className="absolute right-2 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md text-zinc-500 transition hover:bg-red-500/[0.08] hover:text-red-400 disabled:opacity-30"
                             aria-label="Delete conversation"
                           >
                             <Trash2 size={13} />
@@ -806,9 +809,9 @@ async function handleDeleteConversation(
 
 
       {/* Main Conversation */}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section aria-label="Chat" className={`${mobilePanel === "chat" ? "flex" : "hidden"} min-w-0 flex-1 flex-col xl:flex`}>
         {/* Header */}
-        <div className="flex h-16 shrink-0 items-center border-b border-white/[0.06] px-8">
+        <div className="flex h-16 shrink-0 items-center border-b border-white/[0.06] px-4 sm:px-8">
           <div className="min-w-0">
             <h1 className="max-w-xl truncate text-sm font-medium text-zinc-200">
               {activeConversation
@@ -824,9 +827,9 @@ async function handleDeleteConversation(
 
 
         {/* Conversation */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [overflow-wrap:anywhere]">
           {loadError && (
-            <div className="mx-auto mt-6 max-w-3xl px-8">
+            <div className="mx-auto mt-6 max-w-3xl px-4 sm:px-8">
               <div className="rounded-lg border border-red-500/15 bg-red-500/[0.04] px-4 py-3 text-xs text-red-300">
                 {loadError}
               </div>
@@ -844,7 +847,7 @@ async function handleDeleteConversation(
           ) : !activeConversation ? (
             <EmptyChat />
           ) : (
-            <div className="mx-auto max-w-3xl px-8 py-10">
+            <div className="mx-auto max-w-3xl px-4 sm:px-8 py-10">
               {activeConversation.messages.map(
                 (message) =>
                   message.role ===
@@ -887,11 +890,12 @@ async function handleDeleteConversation(
               )}
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
 
 
         {/* Composer */}
-        <div className="shrink-0 border-t border-white/[0.06] px-8 py-5">
+        <div className="shrink-0 border-t border-white/[0.06] px-4 sm:px-8 py-5">
           {dailyLimitReached && (
             <div className="mx-auto mb-3 max-w-3xl">
               <div className="rounded-lg border border-amber-500/15 bg-amber-500/[0.05] px-4 py-3">
@@ -915,8 +919,9 @@ async function handleDeleteConversation(
             <div className="flex items-end gap-3 rounded-xl border border-white/[0.08] bg-white/[0.02] p-2.5 focus-within:border-blue-500/30">
               <textarea
                 rows={1}
+                maxLength={2000}
                 value={input}
-                disabled={dailyLimitReached}
+                disabled={dailyLimitReached || isLoadingConversation || isLoadingConversations}
                 onChange={(event) =>
                   setInput(
                     event.target.value
@@ -924,7 +929,7 @@ async function handleDeleteConversation(
                 }
                 onKeyDown={(event) => {
                   if (
-                    event.key ===
+                    !event.nativeEvent.isComposing && event.key ===
                       "Enter" &&
                     !event.shiftKey
                   ) {
@@ -939,12 +944,13 @@ async function handleDeleteConversation(
                     }
                   }
                 }}
+                aria-label="Ask a question about your documents"
                 placeholder={
                   dailyLimitReached
                     ? "Daily question limit reached"
                     : "Ask a question about your documents..."
                 }
-                className="max-h-32 min-h-10 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5 text-zinc-300 outline-none placeholder:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
+                className="max-h-32 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-2 py-2 text-sm leading-5 text-zinc-300 outline-none placeholder:text-zinc-700 disabled:cursor-not-allowed disabled:opacity-40"
               />
 
               <button
@@ -953,9 +959,10 @@ async function handleDeleteConversation(
                   !input.trim() ||
                   isLoading ||
                   isLoadingConversation ||
+                  isLoadingConversations ||
                   dailyLimitReached
                 }
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-blue-600 text-white transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Send message"
               >
                 {isLoading ? (
@@ -981,7 +988,7 @@ async function handleDeleteConversation(
 
 
       {/* Sources */}
-      <aside className="w-[300px] shrink-0 border-l border-white/[0.06] bg-[#0B0B0E]">
+      <aside aria-label="Sources" className={`${mobilePanel === "sources" ? "flex" : "hidden"} min-w-0 w-full flex-col border-l border-white/[0.06] bg-[#0B0B0E] xl:flex xl:w-[280px] xl:shrink-0`}>
         <div className="flex h-16 items-center border-b border-white/[0.06] px-5">
           <div>
             <h2 className="text-xs font-medium text-zinc-300">
@@ -995,7 +1002,7 @@ async function handleDeleteConversation(
         </div>
 
 
-        <div className="h-[calc(100vh-4rem)] overflow-y-auto p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [overflow-wrap:anywhere]">
           {activeSources.length > 0 ? (
             <div className="space-y-3">
               {activeSources.map(
@@ -1047,6 +1054,7 @@ async function handleDeleteConversation(
           )}
         </div>
       </aside>
+      </div>
     </div>
   );
 }
@@ -1180,7 +1188,7 @@ function formatRelativeTime(
 
 function EmptyChat() {
   return (
-    <div className="flex h-full min-h-[500px] items-center justify-center px-8">
+    <div className="flex h-full min-h-[240px] items-center justify-center px-4 sm:px-8">
       <div className="max-w-lg text-center">
         <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl border border-blue-500/20 bg-blue-500/[0.07] text-sm text-blue-400">
           C
@@ -1536,6 +1544,10 @@ function SourceCard({
   return (
     <article
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      aria-label={`Select source ${source.citation_number}`}
+      onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onClick(); } }}
       className={`cursor-pointer rounded-lg border p-4 transition-all duration-200 ${
         isSelected
           ? "border-blue-500/50 bg-blue-500/[0.08] shadow-[0_0_0_1px_rgba(59,130,246,0.08)]"
@@ -1584,16 +1596,7 @@ function SourceCard({
         }
       </p>
 
-      <button
-        type="button"
-        disabled
-        onClick={(event) => {
-          event.stopPropagation();
-        }}
-        className="mt-4 cursor-not-allowed text-[10px] text-zinc-700"
-      >
-        Open document →
-      </button>
+
     </article>
   );
 }
